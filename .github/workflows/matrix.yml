@@ -31,3 +31,35 @@ jobs:
         with:
           corpus: vectors-a2a-jcs-v01
           verifier: python adapters/rfc8785_cli.py
+  # Rebuilds the AIREP run record from the pinned upstream commit, in AIREP's own
+  # hash-locked environment, and fails when the replay differs from adapters/airep-run.txt.
+  # It runs on every pull request so the recorded cells cannot drift from what the adapter computes.
+  airep-replay:
+    runs-on: ubuntu-latest
+    env:
+      AIREP_COMMIT: 3d62af2a3c217939a3556b741550c2563430322f
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12.3"
+      - name: Fetch AIREP at the pinned commit
+        run: |
+          git clone -q https://github.com/halvrenofviryel/ai-runtime-evidence-protocol ../ai-runtime-evidence-protocol
+          git -C ../ai-runtime-evidence-protocol checkout -q "$AIREP_COMMIT"
+          test "$(git -C ../ai-runtime-evidence-protocol rev-parse HEAD)" = "$AIREP_COMMIT"
+      - name: Build AIREP's offline environment
+        run: |
+          D=../ai-runtime-evidence-protocol/spec/airep/v0.2/class-verification/offline-python-deps
+          python -m venv ../airep-venv
+          ../airep-venv/bin/python -m pip install --no-index --require-hashes --find-links "$D/wheels" -r "$D/requirements.lock"
+      - name: Replay and compare with the recorded run
+        run: |
+          ../airep-venv/bin/python -B adapters/airep_adapter.py ../ai-runtime-evidence-protocol > "$RUNNER_TEMP/airep-run.txt"
+          diff adapters/airep-run.txt "$RUNNER_TEMP/airep-run.txt"
+      - name: A corrupted input must fail the replay
+        run: |
+          printf '{' > ../ai-runtime-evidence-protocol/examples/v02/fixtures/complete.json
+          if ../airep-venv/bin/python -B adapters/airep_adapter.py ../ai-runtime-evidence-protocol > "$RUNNER_TEMP/airep-mut.txt" 2>&1; then
+            echo "replay passed on a corrupted fixture"; exit 1
+          fi
