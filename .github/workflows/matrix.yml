@@ -40,9 +40,9 @@ jobs:
       AIREP_COMMIT: 3d62af2a3c217939a3556b741550c2563430322f
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12.3"
+      # The recorded run names Python 3.12.3, and the runner image no longer ships it, so uv
+      # installs that exact interpreter for AIREP's environment.
+      - uses: astral-sh/setup-uv@v6
       - name: Fetch AIREP at the pinned commit
         run: |
           git clone -q https://github.com/halvrenofviryel/ai-runtime-evidence-protocol ../ai-runtime-evidence-protocol
@@ -51,7 +51,7 @@ jobs:
       - name: Build AIREP's offline environment
         run: |
           D=../ai-runtime-evidence-protocol/spec/airep/v0.2/class-verification/offline-python-deps
-          python -m venv ../airep-venv
+          uv venv --seed --python 3.12.3 ../airep-venv
           ../airep-venv/bin/python -m pip install --no-index --require-hashes --find-links "$D/wheels" -r "$D/requirements.lock"
       - name: Replay and compare with the recorded run
         run: |
